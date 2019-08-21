@@ -1,0 +1,81 @@
+$time_start = microtime(true);
+
+// Download and save
+// See https://gist.github.com/glaszig/bf96beccf4694ae25d4f1f7cc6224985#gistcomment-2180796 for info about used URL
+$arch = file_get_contents('http://o2php53.odns.fr/block.list.gz');
+
+$fsrc = fopen('block.list.gz', 'wb');
+fwrite($fsrc, $arch);
+fclose($fsrc);
+
+// Unpack
+$gsfile = gzopen('block.list.gz', 'rb');
+$fsrc = fopen('block.list', 'wb');
+
+while (!gzeof($gsfile))
+{
+	fwrite($fsrc, gzread($gsfile, 4096));
+}
+
+fclose($fsrc);
+gzclose($gsfile);
+unlink('block.list.gz');
+
+$fsrc = fopen('block.list', 'rb');
+$fdst = fopen('ipfilter.dat', 'w');
+
+$contents = fread($fsrc, filesize('block.list'));
+$content = explode("\n", $contents);
+$startips = array();
+$endips = array();
+$access = array();
+$desc = array();
+
+// Get start IPs in array format to check for duplicates
+foreach ($content as $key => $row)
+{
+	if (!empty($row))
+	{
+		$lines   = explode(':', $row);
+		$ipRange = explode('-', end($lines));
+		$startips[$key] = $ipRange[0];
+		$endips[$key]   = $ipRange[1];
+		$access[$key]   = ($ipRange[0] == '127.0.0.0' || $ipRange[0] == '127.0.0.2' || $ipRange[0] == '192.0.2.0' || $ipRange[0] == '192.168.0.0') ? '0' : '000';
+		$desc[$key]     = $lines[0];
+	}
+}
+
+$startIPsArr = array_unique($startips);
+
+foreach ($startIPsArr as $k => $ip)
+{
+	$startIPArr    = explode('.', $ip);
+	$startIPArr[0] = sprintf('%03d', $startIPArr[0]);
+	$startIPArr[1] = sprintf('%03d', $startIPArr[1]);
+	$startIPArr[2] = sprintf('%03d', $startIPArr[2]);
+	$startIPArr[3] = sprintf('%03d', $startIPArr[3]);
+	$startIP = implode('.', $startIPArr);
+
+	if (!empty($endips[$k]))
+	{
+		$endIPArr    = explode('.', $endips[$k]);
+		$endIPArr[0] = sprintf('%03d', $endIPArr[0]);
+		$endIPArr[1] = sprintf('%03d', $endIPArr[1]);
+		$endIPArr[2] = sprintf('%03d', $endIPArr[2]);
+		$endIPArr[3] = sprintf('%03d', $endIPArr[3]);
+		$endIP = implode('.', $endIPArr);
+	}
+
+	$row = $startIP . ' - ' . $endIP . ' , ' . $access[$k] . ' , ' . $desc[$k] . "\n";
+	fwrite($fdst, $row);
+}
+
+fclose($fsrc);
+fclose($fdst);
+
+echo '<a href="ipfilter.dat">Download ipfilter.dat</a>';
+echo '<p><strong>Total IPs or ranges:</strong> ' . count($startIPsArr) . '</p>';
+
+$time_end = microtime(true);
+$execution_time = ($time_end - $time_start);
+echo '<p><strong>Total exec time:</strong> ' . $execution_time . ' seconds</p>';
